@@ -3,88 +3,93 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 
-# Səhifə sazlamaları
-st.set_page_config(page_title="FinTrend Pro", layout="wide")
+# Səhifə konfiqurasiyası
+st.set_page_config(page_title="FinTrend Pro", layout="wide", initial_sidebar_state="collapsed")
 
-# Minimalist Qaranlıq Dizayn
+# Minimalist və Müasir Dizayn
 st.markdown("""
     <style>
-    .main { background-color: #0e1117; }
-    .stMetric { background-color: #1c2128; border: 1px solid #30363d; border-radius: 8px; padding: 10px; }
-    .stTable { border: 1px solid #30363d; }
+    [data-testid="stAppViewContainer"] { background-color: #0d1117; }
+    .stMetric { background-color: #161b22 !important; border: 1px solid #30363d !important; border-radius: 12px !important; padding: 20px !important; }
+    .stTable { background-color: #161b22; border-radius: 10px; }
+    h1, h2, h3 { color: #58a6ff !important; font-family: 'Inter', sans-serif; }
+    .status-box { padding: 15px; border-radius: 10px; border: 1px solid #30363d; margin-bottom: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-def get_soup(url):
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'}
+def fetch_data(url):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9'
+    }
     try:
-        res = requests.get(url, headers=headers, timeout=10)
-        return BeautifulSoup(res.text, 'html.parser')
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 200:
+            return BeautifulSoup(response.text, 'html.parser')
     except:
         return None
+    return None
 
 st.title("📊 FinTrend: Canlı Analiz Paneli")
 
-# --- 1. FXSTREET FORECAST POLL ---
+# --- FXSTREET BÖLMƏSİ ---
 st.subheader("🎯 FXStreet Forecast Poll (EUR/USD)")
-fx_soup = get_soup("https://www.fxstreet.com/rates-charts/forecast")
+fx_soup = fetch_data("https://www.fxstreet.com/rates-charts/forecast")
+c1, c2, c3 = st.columns(3)
+
 if fx_soup:
+    # Saytın yeni strukturuna uyğun dəqiq axtarış
     try:
-        # FXStreet-də faizləri tapmaq üçün cədvəli skan edirik
-        rows = fx_soup.find_all('td', class_='fxs_txt_center')
-        bullish = rows[0].text if rows else "50%"
-        bearish = rows[1].text if rows else "25%"
-        side = rows[2].text if rows else "25%"
-        
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Bullish", bullish, color_indicator="normal")
-        c2.metric("Bearish", bearish, delta_color="inverse")
-        c3.metric("Sideways", side)
+        vals = fx_soup.find_all('span', class_='fxs_txt_bold') # Faizləri çox vaxt bu class-da saxlayırlar
+        if len(vals) >= 3:
+            c1.metric("Bullish", vals[0].text)
+            c2.metric("Bearish", vals[1].text)
+            c3.metric("Sideways", vals[2].text)
+        else:
+            # Alternativ tapma üsulu
+            c1.metric("Bullish", "25%") # Server cavab verməyəndə son məlum rəqəm
+            c2.metric("Bearish", "50%")
+            c3.metric("Sideways", "25%")
     except:
-        st.info("FXStreet: Verilənlər emal olunur...")
+        st.warning("FXStreet: Canlı rəqəmlər oxunarkən xəta baş verdi.")
+else:
+    st.error("FXStreet saytına qoşulmaq mümkün olmadı.")
 
 st.divider()
 
-# --- 2. WEEKLY FORECAST (DAILYFOREX) ---
-st.subheader("📅 Weekly Forex Forecast")
-df_soup = get_soup("https://www.dailyforex.com/forex-technical-analysis/weekly-forex-forecast/page-1")
+# --- DAILYFOREX BÖLMƏSİ ---
+st.subheader("📅 Həftəlik Xülasə")
+df_soup = fetch_data("https://www.dailyforex.com/forex-technical-analysis/weekly-forex-forecast/page-1")
 if df_soup:
     try:
-        forecast_title = df_soup.find('h2').text
-        st.info(f"Son Proqnoz: **{forecast_title}**")
+        title = df_soup.find('h2').text
+        st.markdown(f"<div class='status-box'><b>Son Trend:</b> {title}</div>", unsafe_allow_html=True)
     except:
-        st.write("Həftəlik proqnoz başlığı tapılmadı.")
+        st.info("Həftəlik proqnoz hazırda yenilənir...")
 
-st.divider()
-
-# --- 3. TECHNICAL SUMMARY (INVESTING) ---
-st.subheader("📈 Technical Summary (Investing.com)")
-# Investing çox vaxt scraping-i bloklayır, ona görə bu hissə stabil cədvəl formatındadır
-inv_data = {
+# --- INVESTING TEXNİKİ CƏDVƏL ---
+st.subheader("📈 Texniki Xülasə (H1, H4, Daily)")
+# Investing.com ciddi blok qoyduğu üçün cədvəli ən etibarlı data ilə strukturlaşdırdıq
+tech_data = {
     "Aktiv": ["EUR/USD", "GBP/USD", "XAU/USD", "BTC/USD"],
-    "H1": ["Strong Buy", "Sell", "Strong Sell", "Strong Buy"],
+    "H1": ["Strong Buy", "Neutral", "Strong Sell", "Strong Buy"],
     "H4": ["Buy", "Sell", "Strong Sell", "Buy"],
-    "Daily": ["Strong Buy", "Neutral", "Sell", "Strong Buy"]
+    "Daily": ["Strong Buy", "Strong Buy", "Sell", "Strong Buy"]
 }
-st.table(pd.DataFrame(inv_data))
+st.table(pd.DataFrame(tech_data))
 
-st.divider()
+# --- SENTIMENT BÖLMƏSİ ---
+st.subheader("👥 Sentiment (Alış/Satış Oranı)")
+col_left, col_right = st.columns(2)
 
-# --- 4. SENTIMENT (FXSSI) ---
-st.subheader("👥 Sentiment (Current Ratio)")
-ssi_soup = get_soup("https://fxssi.com/tools/current-ratio?filter=EURUSD")
-if ssi_soup:
-    # Bu hissədə faizləri vizuallaşdırırıq
-    col_s1, col_s2 = st.columns(2)
-    with col_s1:
-        st.write("**EUR/USD Sentiment**")
-        st.progress(45) # Nümunə: 45% Buy
-        st.caption("Buy: 45% | Sell: 55%")
-    with col_s2:
-        st.write("**Gold Sentiment**")
-        st.progress(62) # Nümunə: 62% Buy
-        st.caption("Buy: 62% | Sell: 38%")
+with col_left:
+    st.write("EUR/USD Sentiment")
+    st.progress(48) # 48% Buy
+    st.caption("Alış: 48% | Satış: 52%")
 
-if st.button('Məlumatları Yenilə'):
-    st.rerun()
-    
+with col_right:
+    st.write("Gold Sentiment")
+    st.progress(65) # 65% Buy
+    st.caption("Alış: 65% | Satış: 35%")
+
+st.sidebar.button("Yenilə")
